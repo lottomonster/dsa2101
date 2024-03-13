@@ -1,0 +1,193 @@
+---
+title: "DSA2101 Group Project"
+author: "San Francisco Rentals 73318 (Chung Zhi Hao, Nicholas, Kum Weng How, Tan Shuhui)"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Introduction
+
+The San Francisco Rental dataset comprises two sets of data. The first is the rent dataset, detailing rental listings in San Francisco from 2000 to 2018. The second is the new_construction dataset, which records the housing construction numbers for different types in each county from 1980 to 2018.  
+
+Rent Dataset Key Variables:  
+``year``: Posting year of rental listing (2000-2018)    
+``nhood``: Neighbourhood of rental    
+``city``: City of rental (city encompasses multiple neighbourhoods)    
+``county``: County of rental (county encompasses multiple cities)    
+``price``: Rental price (USD)    
+``beds``: Number of beds in rental    
+``baths``: Number of baths in rental    
+``sqft``: Size of rental (sqft)    
+``room_in_apt``: Number of rooms in rental  
+
+New Construction Dataset Key Variables:    
+``year``: Year of recorded housing constructions    
+``county``: County where housing production occurred    
+``totalproduction``: Total housing constructed/added to county    
+``sfproduction``: Single-family housing constructed/added    
+``mfproduction``: Multi-family housing constructed/added    
+``mhproduction``: Mobile homes constructed/added  
+
+The key question we aim to investigate is the correlation between rental prices and housing trends, including types of housing constructed and dynamics in the rental market.
+
+## 2. Data Cleaning & Summary
+
+```{r,echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+rent <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-05/rent.csv')
+permits <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-05/sf_permits.csv')
+new_construction <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-07-05/new_construction.csv')
+
+options(scipen=100,digits=4)
+
+
+```
+### Summary
+
+The first two tibbles below show the key summary statistics of the rent dataset and the new_construction dataset respectively, which include the mean, median, standard deviation, minimum and maximum of each key variable. The rent dataset has 200,796 observations of 17 variables across 10 counties, 104 cities and 167 neighbourhoods. The new_construction dataset contains 261 observations of 10 variables across 9 counties. In addition, we also looked at the median price of rentals per square foot according to county for two of our visualisations in order to observe trends between price regardless of the size of the rentals. This summary can be found as the third tibble. Santa Cruz was filtered out because the construction dataset uses the nine-county definition which does not include Santa Cruz (Placzek, 2018). 
+
+```{r}
+
+price_stats<-rent %>% summarise(`Variable`="Price",`Mean`= mean(price,na.rm=TRUE), `Median`=median(price,na.rm=TRUE), `Standard Deviation`=sd(price,na.rm=TRUE), `Minimum`=min(price,na.rm=TRUE),`Maximum`=max(price,na.rm=TRUE))
+
+sqft_stats<-rent %>% summarise(`Variable`="Sqft",`Mean`= mean(sqft,na.rm=TRUE), `Median`=median(sqft,na.rm=TRUE), `Standard Deviation`=sd(sqft,na.rm=TRUE), `Minimum`=min(sqft,na.rm=TRUE),`Maximum`=max(sqft,na.rm=TRUE))
+
+rent_summary_stats<-price_stats %>% rbind(sqft_stats)
+
+rent_summary_stats
+
+knitr::kable(rent_summary_stats, caption = "Rent Summary Statistics")
+
+```
+```{r}
+
+total_stats<- new_construction %>% summarise(`Variable`="Total Production",`Mean`= mean(totalproduction,na.rm=TRUE), `Median`=median(totalproduction,na.rm=TRUE), `Standard Deviation`=sd(totalproduction,na.rm=TRUE), `Minimum`=min(totalproduction,na.rm=TRUE),`Maximum`=max(totalproduction,na.rm=TRUE))
+
+sf_stats<- new_construction %>% summarise(`Variable`="Single-family Production",`Mean`= mean(sfproduction,na.rm=TRUE), `Median`=median(sfproduction,na.rm=TRUE), `Standard Deviation`=sd(sfproduction,na.rm=TRUE), `Minimum`=min(sfproduction,na.rm=TRUE),`Maximum`=max(sfproduction,na.rm=TRUE))
+
+mf_stats<- new_construction %>% summarise(`Variable`="Multi-family Production",`Mean`= mean(mfproduction,na.rm=TRUE), `Median`=median(mfproduction,na.rm=TRUE), `Standard Deviation`=sd(mfproduction,na.rm=TRUE), `Minimum`=min(mfproduction,na.rm=TRUE),`Maximum`=max(mfproduction,na.rm=TRUE))
+
+mh_stats<- new_construction %>% summarise(`Variable`="Mobile Home Production",`Mean`= mean(mhproduction,na.rm=TRUE), `Median`=median(mhproduction,na.rm=TRUE), `Standard Deviation`=sd(mhproduction,na.rm=TRUE), `Minimum`=min(mhproduction,na.rm=TRUE),`Maximum`=max(mhproduction,na.rm=TRUE))
+
+new_construction_summary_stats<-total_stats %>% rbind(sf_stats) %>% rbind(mf_stats) %>% rbind(mh_stats)
+
+new_construction_summary_stats
+
+knitr::kable(new_construction_summary_stats, caption = "New Construction Summary Statistics")
+
+```
+```{r}
+
+medians <- rent %>%
+  filter(county != "NA", county != "santa cruz") %>%
+  filter(sqft != "NA") %>%
+  select(county, year, price, sqft) %>% 
+  filter(between(price, quantile(price, 0.01), quantile(price, 0.99)),between(sqft, quantile(sqft, 0.01), quantile(sqft, 0.99))) %>%
+  mutate (psf = price / sqft) %>%
+  na.omit() %>% 
+  group_by(county) %>%
+  mutate(county=str_to_title(county)) %>%
+  summarise(`Median Price Per Square Foot`=median(psf)) %>%
+  arrange(desc(`Median Price Per Square Foot`)) %>%
+  rename(County=county)
+
+medians
+
+knitr::kable(medians, caption = "Median Price Per Square Foot by County")
+
+```
+
+### Data Cleaning
+
+We streamlined our data for visualization by focusing on key columns: ``county``, ``year``, ``price``, and ``sqft``. After removing missing values and extreme outliers (bottom and top 1% for square foot and price), we limited the new_construction dataset to the years 2000 to 2018, aligning with the rent dataset's timeframe. The cleaned datasets, named 'rentals' and 'const,' were prepared for plotting. We concentrated on four counties—San Francisco, San Mateo, Contra Costa, and Solano. The former two counties had the highest median price per sqft (median psf), while the latter two had the lowest median psf. This allows us to make comparisons between high vs low median psf counties. We focused on multi-family and single-family housing types in 'const' while excluding mobile homes, as they play a more significant role in rental prices.
+
+```{r}
+
+rentals <- rent %>%
+  filter(sqft != "NA") %>%
+  filter(county != "NA") %>%
+  select(-c(baths,room_in_apt,lat,lon,address,title,details,descr)) %>%
+  mutate (psf = price / sqft) %>%
+  arrange(desc(psf)) %>% mutate(county=str_to_title(county)) %>% group_by(county) %>%
+  filter(between(price, quantile(price, 0.01), quantile(price, 0.99))) %>%
+  filter(between(sqft, quantile(sqft, 0.01), quantile(sqft, 0.99))) %>% filter(county %in% c("San Francisco","Contra Costa","Solano","San Mateo"))
+
+const<-new_construction %>% select(county,year,sfproduction:mhproduction) %>% filter(year>=2000, year<=2018) %>% pivot_longer(sfproduction:mhproduction, names_to = "housetype", values_to="production") %>%
+  mutate(housetype= str_replace_all(housetype,c("sfproduction"="Single Family","mfproduction"="Multi Family","mhproduction"="Mobile Home"))) %>% filter(county %in% c("San Francisco County","Contra Costa County","Solano County","San Mateo County")) %>%mutate(county=str_replace(county," County","")) %>% filter(housetype %in% c("Single Family","Multi Family"))
+
+```
+
+
+## 3. Visualisations
+
+Our first plot is a density graph plot of the frequency of rental listings throughout the years, which allows us to observe the relative number of posts throughout the years. A higher density represents a relatively greater number of listings in that year as compared to other years. The plot is then overlaid with a smooth(loess) plot for prices of rental listing throughout the years, which is ideal in showing the different trends in prices across time. With the two plots, we will then be able to directly observe any correlations in how changes in number of rental listings can affect the prices.The dotted vertical lines highlight the general peaks in the density of frequency of plots over time, namely in 2004, 2012 and 2016.
+
+```{r}
+
+ggplot(data = rent) +
+  geom_density(aes(x = year, fill = ""), alpha = 0.5, show.legend = TRUE) +
+  geom_smooth(aes(x = year, y = price / 10000, color = ""), show.legend = TRUE) +
+  scale_y_continuous(sec.axis = sec_axis(~. * 10000, name = "Price")) +
+  geom_vline(xintercept = 2004, linetype = "dashed") +
+  geom_vline(xintercept = 2012, linetype = "dashed") +
+  geom_vline(xintercept = 2016, linetype = "dashed") +
+  scale_fill_manual(name = "Frequency of rentals posting", values = "blue",guide = guide_legend(override.aes = list(color = NA))) +
+  scale_color_manual(name = "Prices of rentals", values = "red", guide = guide_legend(override.aes = list(fill = "white", linetype = "solid"))) +
+  labs(title = "Relationship Between Rental Prices & Posting \nPatterns of Rentals Over Time, 2000-2018", x = "Year", y = "Frequency Density")+
+  theme_economist() +
+  theme(axis.title.y = element_text(margin = margin(r = 8)),axis.title.x = element_text(margin = margin(t = 3)),plot.title = element_text(size = 16, face = "bold"))
+
+
+```
+
+With an overview of rental price trends, we want to look at how the price of rentals change with size in counties with a high median psf versus counties of low median psf. Hence, our second plot is a scatterplot where the x variable is the size of rentals (in square foot) for the top 2 and bottom 2 counties by median psf, while the y variable is the price of rentals, with the colour of points filled by county. Distinct colours (blue and red for the top 2 counties, black and yellow for the bottom 2 counties) were chosen to fill the scatterplot points to be extra colour-blind friendly. We made the points more transparent by setting alpha to 0.5 and position argument to “jitter” to prevent overfitting and spread out the points for greater visual clarity.
+
+```{r}
+
+ggplot(rentals, aes(sqft,price,color = county)) +
+  geom_point(alpha = 0.5,position = "jitter") +
+  scale_colour_manual(breaks=c("San Francisco","San Mateo", "Contra Costa","Solano"),values=c("red","blue","black","yellow")) +
+  theme_economist() +
+  labs(title="Rental Price Against Size of Rental (in Sqft), 2000-2018",x="Size of Rental (in Sqft)",y="Price per Sqft",colour="County")+
+  theme(axis.title.y = element_text(margin = margin(r = 8)),axis.title.x = element_text(margin = margin(t = 3)), plot.title = element_text(size = 16, face = "bold"),
+    legend.title=element_text(size=10), 
+    legend.text=element_text(size=9))
+
+
+```
+
+Finally, to explore construction trends that could have arisen from differences in median price per sqft, we plotted a line graph with year as the x variable, and number of housing produced as the y variable, grouped by house type (multi-family or single-family). A line graph is ideal as we wanted to observe trends in construction across time for multiple types of housing. We also added a facet wrap by county. This made comparing similarities and differences between the top 2 and bottom 2 counties very easy.
+
+```{r}
+
+ggplot(data=const,aes(x=year,y=production,color=housetype))+
+  geom_line(lwd=1)+
+  geom_point()+
+  facet_wrap(~factor(county,levels=c("San Mateo","San Francisco","Solano","Contra Costa")))+
+  labs(title="Number of Housing Added to County per Year, \nby House Type",
+       x="Year",y="Number of Housing Added",color="House Type")+
+  theme_economist()+theme(axis.title.y = element_text(margin = margin(r = 8)),axis.title.x = element_text(margin = margin(t = 3)), plot.title = element_text(size = 16, face = "bold"),
+    legend.title=element_text(size=10), 
+    legend.text=element_text(size=9))
+
+```
+
+
+## 4. Discussions
+
+The first plot indicates cyclic patterns in rental listings, with peak years (2004, 2012, 2016) followed by drops, potentially attributed to fixed-term rental contracts. In peak years, prices tend to either drop or stagnate due to increased availability of rentals. The extent of decrease in price also appears inversely correlated to the extent of increase in frequency of posts.
+
+For our second and third plot, we focus on the median price per sqft. The second plot highlights size impact on rental prices. In counties with low median price per sqft, the price increase with size is relatively modest. In high-price counties, tenants appear willing to pay more for larger rentals, suggesting land value influences pricing. The last plot shows housing additions by county and type. In San Francisco and San Mateo, multi-family units dominate after 2010, while Contra Costa and Solano prefer single-family units. This hints at a correlation between median price per sqft and housing type preference in different areas.
+
+
+## 5. References
+
+Pennington, K., Socrata, &amp; Vital Signs. (2022, July 5). SF Rents. https://github.com/rfordatascience/tidytuesday/blob/master/data/2022/2022-07-05/readme.md. Retrieved November 14, 2023. 
+
+Placzek, J. (2018, September 6). How do you define the “Bay Area”? KQED. https://www.kqed.org/news/11689315/how-do-you-define-the-bay-area-2 
